@@ -237,7 +237,7 @@ def get_SNAP_climate_data(var, lon, lat, which=None, config=None, start=None, en
   with mp.Pool(processes=6) as pool:
     data = pool.starmap(gli_wrapper, arg_list)
 
-  from IPython import embed; embed()
+  #from IPython import embed; embed()
   # Handle issues for each variable...
   if var == 'rsds':
     # Coerce data into expected type. Note variable names are different - 
@@ -320,6 +320,20 @@ if __name__ == '__main__':
   print("Will be (over)writing files to:    ", base_outdir)
   if not os.path.exists(base_outdir):
     os.makedirs(base_outdir)
+
+  create_empty_file(base_outdir, 'drainage.nc')
+  drainage_class = gli_wrapper(os.path.join(args.src_ancillary, config['drainage src']), lon, lat)
+  # Need to threshold drainage data before writing...
+  fill_file_A(base_outdir, 'drainage.nc', var='drainage_class', data=drainage_class)
+
+  create_empty_file(base_outdir, 'topo.nc')
+  slope = gli_wrapper(os.path.join(args.src_ancillary, config['topo slope src']), lon, lat)
+  aspect = gli_wrapper(os.path.join(args.src_ancillary, config['topo aspect src']), lon, lat)
+  elevation = gli_wrapper(os.path.join(args.src_ancillary, config['topo elev src']), lon, lat)
+  fill_file_A(base_outdir, 'topo.nc', var="slope", data=slope)
+  fill_file_A(base_outdir, 'topo.nc', var="aspect", data=aspect)
+  fill_file_A(base_outdir, 'topo.nc', var="elevation", data=elevation)
+
 
   create_empty_file(base_outdir, 'vegetation.nc')
   veg_class = gli_wrapper(os.path.join(args.src_ancillary, config['veg src']), lon, lat)
