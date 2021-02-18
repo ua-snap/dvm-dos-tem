@@ -357,12 +357,16 @@ def create_empty_file(fpath, fname):
 
   ncfile.close()
 
-def fill_file_A(fpath, fname, var=None, data=None):
+def fill_file_A(fpath, fname, var=None, data=None, startpt=None):
   '''Assumes that data passed in is the correct shape. No precautions taken here.'''
   if var not in VARSPEC[fname]:
     raise RuntimeError("Can't find var: {} in VARSPEC!".format(var))
   ncfile = netCDF4.Dataset(os.path.join(fpath, fname), mode='a')
   ncfile.variables[var][:] = data
+
+  if var == 'time' and 'units' in ncfile.variables[var].ncattrs():
+    ncfile.variables[var].units = startpt.strftime('days since %Y-%m-%d %H:%M:%S')
+
   ncfile.close()
 
 def fill_file_B(fpath, fname, var=None, data=None, start=None, end=None):
@@ -412,7 +416,7 @@ def get_SNAP_climate_data(var, lon, lat, which=None, config=None, start=None, en
         /some/long/path/mean_C_CRU_TS40_historical_11_1902.tif
     and returns a datetime object created from end of the file name.
     '''
-    fdate = dt.datetime(
+    fdate = dt.date(
       year=int(os.path.splitext(os.path.basename(x))[0].split('_')[-1]), 
       month=int(os.path.splitext(os.path.basename(x))[0].split('_')[-2]),
       day=1)
@@ -420,7 +424,11 @@ def get_SNAP_climate_data(var, lon, lat, which=None, config=None, start=None, en
 
   src_files = sorted(src_files, key=date_key)
 
+  if start < date_key(src_files[0]) or end > date_key(src_files[-1]):
+    raise RuntimeError("Date range exceeds available source files!!")
+
   # filter src_files here based on start and end...
+  src_files = list(filter(lambda x: date_key(x) >= start and date_key(x) <= end, src_files))
 
   # basic, non-parallel approach:
   #data = [gli_wrapper(i, lon, lat) for i in src_files]
@@ -450,6 +458,7 @@ def get_SNAP_climate_data(var, lon, lat, which=None, config=None, start=None, en
     '''Takes a datetime object and a starting point (also datetime object)
     and returns the netcdf time offset, i.e. "days since YYYY-MM-DD".
     '''
+    dt_obj = dt.datetime(dt_obj.year, dt_obj.month, dt_obj.day)
     tm_offset = netCDF4.date2num(
         dt_obj, 
         units="days since {}".format(start_point), 
@@ -460,7 +469,7 @@ def get_SNAP_climate_data(var, lon, lat, which=None, config=None, start=None, en
   start_point = date_key(src_files[0]).strftime('%Y-%m-%d')
   timecoord = [time_offset(date_key(i), start_point) for i in src_files]
 
-  return data, timecoord
+  return data, timecoord, dt.datetime.fromordinal(date_key(src_files[0]).toordinal())
 
 
 
@@ -494,6 +503,8 @@ if __name__ == '__main__':
   parser.add_argument('--src-config', default='mri-cgcm3', choices=['mri-cgcm3','ncar-ccsm4'],
     help='choose config that maps how the source input files should be laid out (directories, file names, etc)')
 
+  parser.add_argument('--date-range', type=dt.date.fromisoformat, nargs=2,
+    help='start and end dates for the generated files. must be w/in 1901-2100')
 
   parser.add_argument('--lat', default=65.161991, type=lat_validator, help="Latitude of point")
   parser.add_argument('--lon', default=-164.823923, type=lon_validator, help="Longitude of point")
@@ -504,6 +515,12 @@ if __name__ == '__main__':
 
   args = parser.parse_args()
   print("Command line args: {}".format(args))
+
+  # More validation....
+  if args.date_range[0] < dt.date.fromisoformat('1901-01-01'):
+    raise argparse.ArgumentTypeError("Start date too early")
+  if args.date_range[1] > dt.date.fromisoformat('2100-12-31'):
+    raise argparse.ArgumentTypeError("End date too late")
 
   print("Reading config file...")
   config = configobj.ConfigObj(BASE_AR5_RCP85_CONFIG.split("\n"))
@@ -520,6 +537,7 @@ if __name__ == '__main__':
 
   lon = args.lon
   lat = args.lat
+  start, end = args.date_range
 
   base_outdir = os.path.join( args.outdir, 'SITE_{}_{}'.format(args.tag, config['p clim orig inst']) )
   print("Will be (over)writing files to:    ", base_outdir)
@@ -553,14 +571,15 @@ if __name__ == '__main__':
   fill_file_A(base_outdir, 'soil_texture.nc', var='pct_clay', data=pct_clay)
 
   create_empty_file(base_outdir, 'historic-climate.nc')
-  tair_data, _ = get_SNAP_climate_data('tair', lon, lat, which='historic', config=config, start='1901-01-01', end='all')
   nirr_data, _ = get_SNAP_climate_data('rsds', lon, lat, which='historic', config=config, start='1901-01-01', end='all')
   vapo_data, _ = get_SNAP_climate_data('vapo', lon, lat, which='historic',config=config, start='1901-01-01', end='all')
   precip_data, time_coord = get_SNAP_climate_data('prec', lon, lat, which='historic', config=config, start='1901-01-01', end='all')
+  tair_data, _, _ = get_SNAP_climate_data('tair', lon, lat, which='historic', config=config, start=start, end=end)
   fill_file_A(base_outdir, 'historic-climate.nc', var='tair', data=tair_data)
   fill_file_A(base_outdir, 'historic-climate.nc', var='nirr', data=nirr_data)
   fill_file_A(base_outdir, 'historic-climate.nc', var='vapor_press', data=vapo_data)
   fill_file_A(base_outdir, 'historic-climate.nc', var='precip', data=precip_data)
+  fill_file_A(base_outdir, 'historic-climate.nc', var='time', data=time_coord, startpt=startpt)
 
   create_empty_file(base_outdir, 'projected-climate.nc')
   tair_data, _ = get_SNAP_climate_data('tair', lon, lat, which='projected', config=config, start='2016-01-01', end='all')
