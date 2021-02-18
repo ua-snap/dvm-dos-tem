@@ -464,6 +464,14 @@ def get_SNAP_climate_data(var, lon, lat, which=None, config=None, start=None, en
 
 
 
+def lat_validator(lat):
+  if lat < 0 or lat > 90:
+    raise argparse.ArgumentTypeError("Invalid latitude")
+  return lat
+
+def lon_validator(lon):
+  if lon < -359 or lon > 360:
+    raise argparse.ArgumentTypeError("Invalid longitude")
 
 def src_climate_validator(arg_src_climate):
   '''Make sure that the directory exists and has files...'''
@@ -486,6 +494,10 @@ if __name__ == '__main__':
   parser.add_argument('--src-config', default='mri-cgcm3', choices=['mri-cgcm3','ncar-ccsm4'],
     help='choose config that maps how the source input files should be laid out (directories, file names, etc)')
 
+
+  parser.add_argument('--lat', default=65.161991, type=lat_validator, help="Latitude of point")
+  parser.add_argument('--lon', default=-164.823923, type=lon_validator, help="Longitude of point")
+
   parser.add_argument('--outdir', default='input-staging-area', 
     help='path to directory where new folder of files should be written')
   parser.add_argument('--tag', default='cru-ts40_ar5_rcp85_')
@@ -506,9 +518,8 @@ if __name__ == '__main__':
   config.merge(cmdline_config)
   #print("\n".join(config.write()))
 
-
-  lon, lat = (-164.823923, 65.161991)
-
+  lon = args.lon
+  lat = args.lat
 
   base_outdir = os.path.join( args.outdir, 'SITE_{}_{}'.format(args.tag, config['p clim orig inst']) )
   print("Will be (over)writing files to:    ", base_outdir)
