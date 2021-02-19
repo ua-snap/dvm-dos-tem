@@ -20,6 +20,7 @@ import csv
 import netCDF4
 
 import datetime as dt
+import calendar
 import numpy as np
 
 
@@ -540,7 +541,7 @@ if __name__ == '__main__':
   parser.add_argument('--src-config', default='mri-cgcm3', choices=['mri-cgcm3','ncar-ccsm4'],
     help='choose config that maps how the source input files should be laid out (directories, file names, etc)')
 
-  parser.add_argument('--date-range', type=dt.date.fromisoformat, nargs=2,
+  parser.add_argument('--date-range', type=fromisoformat, nargs=2,
     help='start and end dates for the generated files. must be w/in 1901-2100')
 
   parser.add_argument('--lat', default=65.161991, type=lat_validator, help="Latitude of point")
@@ -633,7 +634,7 @@ if __name__ == '__main__':
 
     # make projected files from hrange[1] + 1 month to end
     begin_proj = hrange[1] + dt.timedelta(days=calendar.monthrange(hrange[1].year, hrange[1].month)[1])
-    make_projected(lon, lat, which='projected', config=config, start=begin_proj, end=end)
+    make_climate(lon, lat, which='projected', config=config, start=begin_proj, end=end)
 
 
 
