@@ -497,6 +497,17 @@ def make_climate(lon, lat, which=None, config=None, start=None, end=None):
     fill_file_A(base_outdir, 'projected-climate.nc', var='time', data=time_coord, startpt=startpt)
 
 
+def fromisoformat(isostring):
+  '''
+  Work around since python 3.6 does not have dt.date.fromisoformat().
+  Parameters:
+    `isostring` is expected to be YYYY-MM-DD formatted.
+  Returns:
+    A date object (no time)
+  '''
+  d = dt.datetime.strptime(isostring, "%Y-%m-%d")
+  return dt.date(d.year, d.month, d.day)
+
 
 
 def lat_validator(lat):
@@ -543,9 +554,9 @@ if __name__ == '__main__':
   print("Command line args: {}".format(args))
 
   # More validation....
-  if args.date_range[0] < dt.date.fromisoformat('1901-01-01'):
+  if args.date_range[0] < fromisoformat('1901-01-01'):
     raise argparse.ArgumentTypeError("Start date too early")
-  if args.date_range[1] > dt.date.fromisoformat('2100-12-31'):
+  if args.date_range[1] > fromisoformat('2100-12-31'):
     raise argparse.ArgumentTypeError("End date too late")
 
   print("Reading config file...")
@@ -600,8 +611,8 @@ if __name__ == '__main__':
   start, end = args.date_range
 
   # range of dates available in input files (as set in config)
-  hrange = (dt.date.fromisoformat('{}-01-01'.format(config['h clim first yr'])), dt.date.fromisoformat('{}-12-01'.format(config['h clim last yr'])))
-  prange = (dt.date.fromisoformat('{}-01-01'.format(config['p clim first yr'])), dt.date.fromisoformat('{}-12-01'.format(config['p clim last yr'])))
+  hrange = (fromisoformat('{}-01-01'.format(config['h clim first yr'])), fromisoformat('{}-12-01'.format(config['h clim last yr'])))
+  prange = (fromisoformat('{}-01-01'.format(config['p clim first yr'])), fromisoformat('{}-12-01'.format(config['p clim last yr'])))
 
   # Basic check
   if not (start >= hrange[0] and end <= prange[1]):
