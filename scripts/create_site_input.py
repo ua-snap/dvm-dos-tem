@@ -471,6 +471,32 @@ def get_SNAP_climate_data(var, lon, lat, which=None, config=None, start=None, en
 
   return data, timecoord, dt.datetime.fromordinal(date_key(src_files[0]).toordinal())
 
+def make_climate(lon, lat, which=None, config=None, start=None, end=None):
+  if which == 'historic':
+    create_empty_file(base_outdir, 'historic-climate.nc')
+    tair_data, _, _ = get_SNAP_climate_data('tair', lon, lat, which='historic', config=config, start=start, end=end)
+    nirr_data, _, _ = get_SNAP_climate_data('rsds', lon, lat, which='historic', config=config, start=start, end=end)
+    vapo_data, _, _ = get_SNAP_climate_data('vapo', lon, lat, which='historic',config=config, start=start, end=end)
+    precip_data, time_coord, startpt = get_SNAP_climate_data('prec', lon, lat, which='historic', config=config, start=start, end=end)
+    fill_file_A(base_outdir, 'historic-climate.nc', var='tair', data=tair_data)
+    fill_file_A(base_outdir, 'historic-climate.nc', var='nirr', data=nirr_data)
+    fill_file_A(base_outdir, 'historic-climate.nc', var='vapor_press', data=vapo_data)
+    fill_file_A(base_outdir, 'historic-climate.nc', var='precip', data=precip_data)
+    fill_file_A(base_outdir, 'historic-climate.nc', var='time', data=time_coord, startpt=startpt)
+
+  elif which == 'projected':
+    create_empty_file(base_outdir, 'projected-climate.nc')
+    tair_data, _, _ = get_SNAP_climate_data('tair', lon, lat, which='projected', config=config, start=start, end=end)
+    nirr_data, _, _ = get_SNAP_climate_data('rsds', lon, lat, which='projected', config=config, start=start, end=end)
+    vapo_data, _, _ = get_SNAP_climate_data('vapo', lon, lat, which='projected',config=config, start=start, end=end)
+    precip_data, time_coord, startpt = get_SNAP_climate_data('prec', lon, lat, which='projected', config=config, start=start, end=end)
+    fill_file_A(base_outdir, 'projected-climate.nc', var='tair', data=tair_data)
+    fill_file_A(base_outdir, 'projected-climate.nc', var='nirr', data=nirr_data)
+    fill_file_A(base_outdir, 'projected-climate.nc', var='vapor_press', data=vapo_data)
+    fill_file_A(base_outdir, 'projected-climate.nc', var='precip', data=precip_data)
+    fill_file_A(base_outdir, 'projected-climate.nc', var='time', data=time_coord, startpt=startpt)
+
+
 
 
 def lat_validator(lat):
@@ -537,7 +563,6 @@ if __name__ == '__main__':
 
   lon = args.lon
   lat = args.lat
-  start, end = args.date_range
 
   base_outdir = os.path.join( args.outdir, 'SITE_{}_{}'.format(args.tag, config['p clim orig inst']) )
   print("Will be (over)writing files to:    ", base_outdir)
@@ -570,30 +595,37 @@ if __name__ == '__main__':
   fill_file_A(base_outdir, 'soil_texture.nc', var='pct_silt', data=pct_silt)
   fill_file_A(base_outdir, 'soil_texture.nc', var='pct_clay', data=pct_clay)
 
-  create_empty_file(base_outdir, 'historic-climate.nc')
-  nirr_data, _ = get_SNAP_climate_data('rsds', lon, lat, which='historic', config=config, start='1901-01-01', end='all')
-  vapo_data, _ = get_SNAP_climate_data('vapo', lon, lat, which='historic',config=config, start='1901-01-01', end='all')
-  precip_data, time_coord = get_SNAP_climate_data('prec', lon, lat, which='historic', config=config, start='1901-01-01', end='all')
-  tair_data, _, _ = get_SNAP_climate_data('tair', lon, lat, which='historic', config=config, start=start, end=end)
-  fill_file_A(base_outdir, 'historic-climate.nc', var='tair', data=tair_data)
-  fill_file_A(base_outdir, 'historic-climate.nc', var='nirr', data=nirr_data)
-  fill_file_A(base_outdir, 'historic-climate.nc', var='vapor_press', data=vapo_data)
-  fill_file_A(base_outdir, 'historic-climate.nc', var='precip', data=precip_data)
-  fill_file_A(base_outdir, 'historic-climate.nc', var='time', data=time_coord, startpt=startpt)
 
-  create_empty_file(base_outdir, 'projected-climate.nc')
-  tair_data, _ = get_SNAP_climate_data('tair', lon, lat, which='projected', config=config, start='2016-01-01', end='all')
-  nirr_data, _ = get_SNAP_climate_data('rsds', lon, lat, which='projected', config=config, start='2016-01-01', end='all')
-  vapo_data, _ = get_SNAP_climate_data('vapo', lon, lat, which='projected',config=config, start='2016-01-01', end='all')
-  precip_data, time_coord = get_SNAP_climate_data('prec', lon, lat, which='projected', config=config, start='2016-01-01', end='all')
-  fill_file_A(base_outdir, 'projected-climate.nc', var='tair', data=tair_data)
-  fill_file_A(base_outdir, 'projected-climate.nc', var='nirr', data=nirr_data)
-  fill_file_A(base_outdir, 'projected-climate.nc', var='vapor_press', data=vapo_data)
-  fill_file_A(base_outdir, 'projected-climate.nc', var='precip', data=precip_data)
+  # dates as requested from command line
+  start, end = args.date_range
+
+  # range of dates available in input files (as set in config)
+  hrange = (dt.date.fromisoformat('{}-01-01'.format(config['h clim first yr'])), dt.date.fromisoformat('{}-12-01'.format(config['h clim last yr'])))
+  prange = (dt.date.fromisoformat('{}-01-01'.format(config['p clim first yr'])), dt.date.fromisoformat('{}-12-01'.format(config['p clim last yr'])))
+
+  # Basic check
+  if not (start >= hrange[0] and end <= prange[1]):
+    raise RuntimeError("Invalid date range!")
+
+  if start >= prange[0]:
+    print("No need to make historic files...")
+    make_climate(lon, lat, which='projected', config=config, start=start, end=end)
+
+  if end <= hrange[1]:
+    print("No need to make projected files...")
+    make_climate(lon, lat, which='historic', config=config, start=start, end=end)
+
+  if start <= hrange[1] and end >= prange[0]:
+    print("Overlapping...")
+    # Make historic from start to hrange[1]
+    make_climate(lon, lat, which='historic', config=config, start=start, end=hrange[1])
+
+    # make projected files from hrange[1] + 1 month to end
+    begin_proj = hrange[1] + dt.timedelta(days=calendar.monthrange(hrange[1].year, hrange[1].month)[1])
+    make_projected(lon, lat, which='projected', config=config, start=begin_proj, end=end)
 
 
 
-  from IPython import embed; embed()
 
 
 
