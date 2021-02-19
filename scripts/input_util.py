@@ -562,14 +562,20 @@ if __name__ == '__main__':
       help="The file to read from for getting lat/lon pixel offsets.")
 
   crop_parser = subparsers.add_parser('crop',help=textwrap.dedent('''\
-      Crop an input dataset, using offset and size. The reason we need this in
-      addition to the create_region_input.py script is because the 
+      BROKEN - See notes below. Crop an input dataset, using offset and size. The 
+      reason we need this in addition to the create_region_input.py script is because the 
       create_region_input.py script uses gdal_translate (or gdalwarp) to subset
       the original tif files, and for some reason that has problems creating 
       regions smaller than about 5x5 pixels. So in order to get a single pixel
       input dataset, we have to first create a larger dataset, and then crop it
       using this tool. Someday it might make sense to merge this script with the
-      create_region_input.py script.'''))
+      create_region_input.py script. 
+      NOTE 1: Offsets are from upper left!
+      NOTE 2: Offset reature seems broken as of 29/01/2021, when I can use the
+      io_view.py tool to map the resulting datasets. No matter what values are
+      passed for --yx the resulting dataset seems pinned in the upper left corner
+      of the source. This may be due to the way that the projection attributes are
+      being copied because gdal_translate doesn't seem to throw any errors. '''))
   crop_parser.add_argument('--yx', type=int, nargs=2, required=True, help="The Y, X position to start cropping")
   crop_parser.add_argument('--ysize', type=int, default=1, help="The number of pixels to take in the y dimension.")
   crop_parser.add_argument('--xsize', type=int, default=1, help="The number of pixels to take in the x dimension.")
