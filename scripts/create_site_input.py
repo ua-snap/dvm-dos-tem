@@ -694,10 +694,61 @@ if __name__ == '__main__':
   if not (start >= hrange[0] and end <= prange[1]):
     raise RuntimeError("Invalid date range!")
 
-  # User dates all within PROJECTED files 
-  if start >= prange[0]:
-    print("No need to make historic files...")
+  if start <= hrange[1]:
+    if end <= hrange[1]: # historic: start => end
+      # CLIMATE
+      make_climate(lon, lat, which='historic', config=config, start=start, end=end)
 
+      # FIRE
+      create_empty_file(base_outdir, 'historic-explicit-fire.nc')
+      tc_data = basic_timecoord(start, end)
+      fill_file_A(base_outdir, 'historic-explicit-fire.nc', var='time', data=tc_data, startpt=start)
+      vnames = 'exp_burn_mask,exp_area_of_burn,exp_fire_severity,exp_jday_of_burn'.split(',')
+      for v in vnames:
+        fill_file_A(base_outdir, 'historic-explicit-fire.nc', var=v, data=np.zeros(len(tc_data)))
+
+      # CO2
+      sidx = RCP_85_CO2_YEARS.index(start.year)
+      eidx = RCP_85_CO2_YEARS.index(end.year) + 1
+      make_co2_file(base_outdir, 'co2.nc', sidx, eidx)
+    elif end > hrange[1]: # historic: start => hrange[1], projected: hrange[1]+1 => end
+      # CLIMATE - historic
+      make_climate(lon, lat, which='historic', config=config, start=start, end=hrange[1])
+
+      # FIRE - historic
+      create_empty_file(base_outdir, 'historic-explicit-fire.nc')
+      tc_data = basic_timecoord(start, hrange[1])
+      fill_file_A(base_outdir, 'historic-explicit-fire.nc', var='time', data=tc_data, startpt=start)
+      vnames = 'exp_burn_mask,exp_area_of_burn,exp_fire_severity,exp_jday_of_burn'.split(',')
+      for v in vnames:
+        fill_file_A(base_outdir, 'historic-explicit-fire.nc', var=v, data=np.zeros(len(tc_data)))
+
+      # CO2 - historic
+      sidx = RCP_85_CO2_YEARS.index(start.year)
+      eidx = RCP_85_CO2_YEARS.index(hrange[1].year) + 1
+      make_co2_file(base_outdir, 'co2.nc', sidx, eidx)
+
+      # make projected files from hrange[1] + 1 month to end
+      begin_proj = hrange[1] + dt.timedelta(days=calendar.monthrange(hrange[1].year, hrange[1].month)[1])
+
+      # CLIMATE - projected 
+      make_climate(lon, lat, which='projected', config=config, start=begin_proj, end=end)
+
+      # FIRE - projected
+      create_empty_file(base_outdir, 'projected-explicit-fire.nc')
+      vnames = 'exp_burn_mask,exp_area_of_burn,exp_fire_severity,exp_jday_of_burn'.split(',')
+      tc_data = basic_timecoord(begin_proj, end)
+      fill_file_A(base_outdir, 'projected-explicit-fire.nc', var='time', data=tc_data, startpt=begin_proj)
+      for v in vnames:
+        fill_file_A(base_outdir, 'projected-explicit-fire.nc', var=v, data=np.zeros(len(tc_data)))
+
+      # C02 - projected
+      sidx = RCP_85_CO2_YEARS.index(begin_proj.year)
+      edix = RCP_85_CO2_YEARS.index(end.year) + 1 
+      make_co2_file(base_outdir, 'projected-co2.nc', sidx, eidx)
+    else:
+      print("How did I get here???")
+  elif start > hrange[1]: # make projected: start => end
     # CLIMATE
     make_climate(lon, lat, which='projected', config=config, start=start, end=end)
 
@@ -713,67 +764,9 @@ if __name__ == '__main__':
     sidx = RCP_85_CO2_YEARS.index(start.year)
     eidx = RCP_85_CO2_YEARS.index(end.year) + 1 
     make_co2_file(base_outdir, 'projected-co2.nc', sidx, eidx)
+  else:
+    print("How did I get here???")
 
-
-  # User dates all within HISTORIC files
-  if end <= hrange[1]:
-    print("No need to make projected files...")
-
-    # CLIMATE
-    make_climate(lon, lat, which='historic', config=config, start=start, end=end)
-
-    # FIRE
-    create_empty_file(base_outdir, 'historic-explicit-fire.nc')
-    tc_data = basic_timecoord(start, end)
-    fill_file_A(base_outdir, 'historic-explicit-fire.nc', var='time', data=tc_data, startpt=start)
-    vnames = 'exp_burn_mask,exp_area_of_burn,exp_fire_severity,exp_jday_of_burn'.split(',')
-    for v in vnames:
-      fill_file_A(base_outdir, 'historic-explicit-fire.nc', var=v, data=np.zeros(len(tc_data)))
-
-    # CO2
-    sidx = RCP_85_CO2_YEARS.index(start.year)
-    eidx = RCP_85_CO2_YEARS.index(end.year) + 1
-    make_co2_file(base_outdir, 'co2.nc', sidx, eidx)
-
-
-  # User dates in overlap between HISTORIC and PROJECTED.
-  if start <= hrange[1] and end >= prange[0]:
-    print("Overlapping...")
-    # Make historic from start to hrange[1]
-
-    # CLIMATE - historic
-    make_climate(lon, lat, which='historic', config=config, start=start, end=hrange[1])
-
-    # FIRE - historic
-    create_empty_file(base_outdir, 'historic-explicit-fire.nc')
-    tc_data = basic_timecoord(start, hrange[1])
-    fill_file_A(base_outdir, 'historic-explicit-fire.nc', var='time', data=tc_data, startpt=start)
-    vnames = 'exp_burn_mask,exp_area_of_burn,exp_fire_severity,exp_jday_of_burn'.split(',')
-    for v in vnames:
-      fill_file_A(base_outdir, 'historic-explicit-fire.nc', var=v, data=np.zeros(len(tc_data)))
-
-    # CO2 - historic
-    sidx = RCP_85_CO2_YEARS.index(start.year)
-    eidx = RCP_85_CO2_YEARS.index(hrange[1].year) + 1
-    make_co2_file(base_outdir, 'co2.nc', sidx, eidx)
-
-    # CLIMATE - projected 
-    # make projected files from hrange[1] + 1 month to end
-    begin_proj = hrange[1] + dt.timedelta(days=calendar.monthrange(hrange[1].year, hrange[1].month)[1])
-    make_climate(lon, lat, which='projected', config=config, start=begin_proj, end=end)
-
-    # FIRE - projected
-    create_empty_file(base_outdir, 'projected-explicit-fire.nc')
-    vnames = 'exp_burn_mask,exp_area_of_burn,exp_fire_severity,exp_jday_of_burn'.split(',')
-    tc_data = basic_timecoord(begin_proj, end)
-    fill_file_A(base_outdir, 'projected-explicit-fire.nc', var='time', data=tc_data, startpt=begin_proj)
-    for v in vnames:
-      fill_file_A(base_outdir, 'projected-explicit-fire.nc', var=v, data=np.zeros(len(tc_data)))
-
-    # C02 - projected
-    sidx = RCP_85_CO2_YEARS.index(begin_proj.year)
-    edix = RCP_85_CO2_YEARS.index(end.year) + 1 
-    make_co2_file(base_outdir, 'projected-co2.nc', sidx, eidx)
 
 
 
