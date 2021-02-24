@@ -744,7 +744,7 @@ if __name__ == '__main__':
 
       # C02 - projected
       sidx = RCP_85_CO2_YEARS.index(begin_proj.year)
-      edix = RCP_85_CO2_YEARS.index(end.year) + 1 
+      eidx = RCP_85_CO2_YEARS.index(end.year) + 1
       make_co2_file(base_outdir, 'projected-co2.nc', sidx, eidx)
     else:
       print("How did I get here???")
