@@ -32,6 +32,8 @@ probably from here: https://www.esrl.noaa.gov/gmd/ccgg/trends/data.html
 
  - The RCP_85 ("new") data are from here: http://www.iiasa.ac.at/web-apps/tnt/RcpDb
 
+There are some very small differences in the data around the early 2000s.
+
 Use this to snippet to plot them next to eachother.
     import pandas as pd
     import matplotlib.pyplot as plt
@@ -326,11 +328,11 @@ VARSPEC = {
   },
 }
 
-def make_co2_file(filename, start_idx, end_idx, projected=False):
-  '''Generates a co2 file for dvmdostem from the old sample data'''
+def make_co2_file(fpath, fname, start_idx, end_idx):
+  '''Generates a co2 file for dvmdostem from the RCP C02 data...'''
 
   print("Creating a co2 file...")
-  new_ncfile = netCDF4.Dataset(filename, mode='w', format='NETCDF4')
+  new_ncfile = netCDF4.Dataset(os.path.join(fpath, fname), mode='w', format='NETCDF4')
 
   # Dimensions
   yearD = new_ncfile.createDimension('year', None) # append along time axis
@@ -341,25 +343,10 @@ def make_co2_file(filename, start_idx, end_idx, projected=False):
   # Data Variables
   co2V = new_ncfile.createVariable('co2', np.float32, ('year',))
 
-  if not projected:
-    print(" --> NOTE: Hard-coding the values that were just ncdumped from the old file...")
-    print(" --> NOTE: Adding new values for 2010-2017. Using data from here:")
-    print("           https://www.esrl.noaa.gov/gmd/ccgg/trends/data.html")
-    print("           direct ftp link:")
-    print("           ftp://aftp.cmdl.noaa.gov/products/trends/co2/co2_annmean_mlo.txt")
-    new_ncfile.data_source = "https://www.esrl.noaa.gov/gmd/ccgg/trends/data.html"
-    co2_data = OLD_CO2_DATA[start_idx:end_idx]
-    co2_years = OLD_CO2_YEARS[start_idx:end_idx]
-  else:
-    print("--> NOTE: Using **projected** data from here: http://www.iiasa.ac.at/web-apps/tnt/RcpDb/dsd?Action=htmlpage&page=download")
-    new_ncfile.data_source = "http://www.iiasa.ac.at/web-apps/tnt/RcpDb/dsd?Action=htmlpage&page=download"
-    co2_data = RCP_85_CO2_DATA[start_idx:end_idx]
-    co2_years = RCP_85_CO2_YEARS[start_idx:end_idx]
+  co2V[:] = RCP_85_CO2_DATA[start_idx:end_idx]
+  yearV[:] = RCP_85_CO2_YEARS[start_idx:end_idx]
 
-  co2V[:] = co2_data
-  yearV[:] = co2_years
-
-  new_ncfile.source = source_attr_string()
+  #new_ncfile.source = source_attr_string()
   new_ncfile.close()
 
 def gli_wrapper(srcfile, lon, lat, dtype=None):
@@ -566,9 +553,6 @@ def make_climate(lon, lat, which=None, config=None, start=None, end=None):
     fill_file_A(base_outdir, 'projected-climate.nc', var='precip', data=precip_data)
     fill_file_A(base_outdir, 'projected-climate.nc', var='time', data=time_coord, startpt=startpt)
 
-def make_fire(lon, lat, which=None, config=None, start=None, end=None):
-  if which == 'historic':
-    pass
 
 def fromisoformat(isostring):
   '''
@@ -580,7 +564,6 @@ def fromisoformat(isostring):
   '''
   d = dt.datetime.strptime(isostring, "%Y-%m-%d")
   return dt.date(d.year, d.month, d.day)
-
 
 
 def lat_validator(lat):
@@ -692,16 +675,10 @@ if __name__ == '__main__':
     fill_file_A(base_outdir, 'fri-fire.nc', var=v, data=0)
 
 
-  # TIME dependant files
+  # TIME dependant files: climate, fire, CO2
 
-
-  # C02 file is yearly resolution.
-  #make_co2_file('co2.nc', 5, 8)
-  #create_empty_file(base_outdir, 'co2.nc')
-  #create_empty_file(base_outdir, 'projected-co2.nc')
-
-  # Climate and Fire share assumptions about time axis.
-  # Both are monthly resolution.
+  # Climate and fire inputs share assumptions about time axis:
+  # both are monthly resolution, while CO2 is yearly.
   # For now it is assumed that the fire files time axis matches 
   # exactly the climate files time axis. The climate files time 
   # axis is set based on the values in the config objects and the
@@ -709,7 +686,7 @@ if __name__ == '__main__':
   # we could add entries to the config object. For now we will set
   # the fire time axes based on the climate files.
 
-  # range of dates available in input files (as set in config)
+  # range of dates available in input climate files (as set in config)
   hrange = (fromisoformat('{}-01-01'.format(config['h clim first yr'])), fromisoformat('{}-12-01'.format(config['h clim last yr'])))
   prange = (fromisoformat('{}-01-01'.format(config['p clim first yr'])), fromisoformat('{}-12-01'.format(config['p clim last yr'])))
 
@@ -717,7 +694,7 @@ if __name__ == '__main__':
   if not (start >= hrange[0] and end <= prange[1]):
     raise RuntimeError("Invalid date range!")
 
-  # User dates all within projected files 
+  # User dates all within PROJECTED files 
   if start >= prange[0]:
     print("No need to make historic files...")
 
@@ -732,7 +709,13 @@ if __name__ == '__main__':
     for v in vnames:
       fill_file_A(base_outdir, 'projected-explicit-fire.nc', var=v, data=np.zeros(len(tc_data)))
 
-  # User dates all within historic files
+    # CO2
+    sidx = RCP_85_CO2_YEARS.index(start.year)
+    eidx = RCP_85_CO2_YEARS.index(end.year) + 1 
+    make_co2_file(base_outdir, 'projected-co2.nc', sidx, eidx)
+
+
+  # User dates all within HISTORIC files
   if end <= hrange[1]:
     print("No need to make projected files...")
 
@@ -747,8 +730,13 @@ if __name__ == '__main__':
     for v in vnames:
       fill_file_A(base_outdir, 'historic-explicit-fire.nc', var=v, data=np.zeros(len(tc_data)))
 
+    # CO2
+    sidx = RCP_85_CO2_YEARS.index(start.year)
+    eidx = RCP_85_CO2_YEARS.index(end.year) + 1
+    make_co2_file(base_outdir, 'co2.nc', sidx, eidx)
 
-  # User dates in overlap between historic and projected.
+
+  # User dates in overlap between HISTORIC and PROJECTED.
   if start <= hrange[1] and end >= prange[0]:
     print("Overlapping...")
     # Make historic from start to hrange[1]
@@ -764,7 +752,12 @@ if __name__ == '__main__':
     for v in vnames:
       fill_file_A(base_outdir, 'historic-explicit-fire.nc', var=v, data=np.zeros(len(tc_data)))
 
+    # CO2 - historic
+    sidx = RCP_85_CO2_YEARS.index(start.year)
+    eidx = RCP_85_CO2_YEARS.index(hrange[1].year) + 1
+    make_co2_file(base_outdir, 'co2.nc', sidx, eidx)
 
+    # CLIMATE - projected 
     # make projected files from hrange[1] + 1 month to end
     begin_proj = hrange[1] + dt.timedelta(days=calendar.monthrange(hrange[1].year, hrange[1].month)[1])
     make_climate(lon, lat, which='projected', config=config, start=begin_proj, end=end)
@@ -777,6 +770,10 @@ if __name__ == '__main__':
     for v in vnames:
       fill_file_A(base_outdir, 'projected-explicit-fire.nc', var=v, data=np.zeros(len(tc_data)))
 
+    # C02 - projected
+    sidx = RCP_85_CO2_YEARS.index(begin_proj.year)
+    edix = RCP_85_CO2_YEARS.index(end.year) + 1 
+    make_co2_file(base_outdir, 'projected-co2.nc', sidx, eidx)
 
 
 
