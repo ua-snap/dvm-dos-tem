@@ -291,24 +291,24 @@ VARSPEC = {
     'elevation': {'dims':'Y,X', 'dtype':'f4'}
   },
   'fri-fire.nc': {
-    'fri': {'dtype':'i4'},
-    'fri_severity': {'dtype':'i4'},
-    'fri_jday_of_burn': {'dtype':'i4'},
-    'fri_area_of_burn': {'dtype':'i4'}
+    'fri': {'dims':'Y,X', 'dtype':'i4'},
+    'fri_severity': {'dims':'Y,X', 'dtype':'i4'},
+    'fri_jday_of_burn': {'dims':'Y,X', 'dtype':'i4'},
+    'fri_area_of_burn': {'dims':'Y,X', 'dtype':'i4'}
   },
   'projected-explicit-fire.nc': {
-    'time': {'dtype':'f4', 'units':'REPLACE ME', 'long_name':'time','calendar':'365_day'},
-    'exp_burn_mask': {'dtype':'i4'},
-    'exp_area_of_burn': {'dtype':'i4'},
-    'exp_fire_severirty': {'dtype':'i4'},
-    'exp_jday_of_burn': {'dtype':'i4'},
+    'time': {'dims':'time', 'dtype':'f4', 'units':'REPLACE ME', 'long_name':'time','calendar':'365_day'},
+    'exp_burn_mask': {'dims':'time,Y,X', 'dtype':'i4'},
+    'exp_area_of_burn': {'dims':'time,Y,X', 'dtype':'i4'},
+    'exp_fire_severity': {'dims':'time,Y,X', 'dtype':'i4'},
+    'exp_jday_of_burn': {'dims':'time,Y,X', 'dtype':'i4'},
   },       
   'historic-explicit-fire.nc': {
-    'time': {'dtype':'f4', 'units':'REPLACE ME', 'long_name':'time','calendar':'365_day'},
-    'exp_burn_mask': {'dtype':'i4'},
-    'exp_area_of_burn': {'dtype':'i4'},
-    'exp_fire_severirty': {'dtype':'i4'},
-    'exp_jday_of_burn': {'dtype':'i4'},
+    'time': {'dims':'time','dtype':'f4', 'units':'REPLACE ME', 'long_name':'time','calendar':'365_day'},
+    'exp_burn_mask': {'dims':'time,Y,X','dtype':'i4'},
+    'exp_area_of_burn': {'dims':'time,Y,X','dtype':'i4'},
+    'exp_fire_severity': {'dims':'time,Y,X','dtype':'i4'},
+    'exp_jday_of_burn': {'dims':'time,Y,X','dtype':'i4'},
   },       
   'projected-climate.nc': {
     'time': {'dims':'time', 'dtype':'f4', 'units':'REPLACE ME', 'long_name':'time','calendar':'365_day'},
@@ -325,6 +325,42 @@ VARSPEC = {
     'vapor_press': {'dims':'time,Y,X','dtype':'f4', 'units':'', 'standard_name':'water_vapor_pressure'},
   },
 }
+
+def make_co2_file(filename, start_idx, end_idx, projected=False):
+  '''Generates a co2 file for dvmdostem from the old sample data'''
+
+  print("Creating a co2 file...")
+  new_ncfile = netCDF4.Dataset(filename, mode='w', format='NETCDF4')
+
+  # Dimensions
+  yearD = new_ncfile.createDimension('year', None) # append along time axis
+    
+  # Coordinate Variable
+  yearV = new_ncfile.createVariable('year', np.int, ('year',))
+    
+  # Data Variables
+  co2V = new_ncfile.createVariable('co2', np.float32, ('year',))
+
+  if not projected:
+    print(" --> NOTE: Hard-coding the values that were just ncdumped from the old file...")
+    print(" --> NOTE: Adding new values for 2010-2017. Using data from here:")
+    print("           https://www.esrl.noaa.gov/gmd/ccgg/trends/data.html")
+    print("           direct ftp link:")
+    print("           ftp://aftp.cmdl.noaa.gov/products/trends/co2/co2_annmean_mlo.txt")
+    new_ncfile.data_source = "https://www.esrl.noaa.gov/gmd/ccgg/trends/data.html"
+    co2_data = OLD_CO2_DATA[start_idx:end_idx]
+    co2_years = OLD_CO2_YEARS[start_idx:end_idx]
+  else:
+    print("--> NOTE: Using **projected** data from here: http://www.iiasa.ac.at/web-apps/tnt/RcpDb/dsd?Action=htmlpage&page=download")
+    new_ncfile.data_source = "http://www.iiasa.ac.at/web-apps/tnt/RcpDb/dsd?Action=htmlpage&page=download"
+    co2_data = RCP_85_CO2_DATA[start_idx:end_idx]
+    co2_years = RCP_85_CO2_YEARS[start_idx:end_idx]
+
+  co2V[:] = co2_data
+  yearV[:] = co2_years
+
+  new_ncfile.source = source_attr_string()
+  new_ncfile.close()
 
 def gli_wrapper(srcfile, lon, lat, dtype=None):
   '''gdallocationinfo wrapper'''
@@ -393,9 +429,56 @@ def fill_file_B(fpath, fname, var=None, data=None, start=None, end=None):
     #  - file 
     print("STUB - not doing anything yet...")
 
+# Function used for building out the time coordinate variable info...
+def time_offset(dt_obj, start_point):
+  '''Takes a datetime object and a starting point (also datetime object)
+  and returns the netcdf time offset, i.e. "days since YYYY-MM-DD".
+  '''
+  dt_obj = dt.datetime(dt_obj.year, dt_obj.month, dt_obj.day)
+  tm_offset = netCDF4.date2num(
+      dt_obj, 
+      units="days since {}".format(start_point), 
+      calendar='365_day'
+  )
+  return tm_offset
+
+# Make some infor for the time coordinate. Minimal error checking...
+# Time coordinate variable is a list of "offsets" from 
+# the starting point. This code here sort of assumes monthly
+# data, no time info. NetCDF/CF standards allow for much more
+# detail, but we are ignoring for now...
+# Get a time coordinate array
+def basic_timecoord(start, end):
+  time_coord_data = []
+  for y in range(start.year, end.year+1):
+    for m in range(start.month, end.month+1):
+      d = fromisoformat('{}-{}-01'.format(y, m))
+      time_coord_data.append(time_offset(d, start))
+      #print(d, time_offset(d, start))
+  return time_coord_data
+
+
 def get_SNAP_climate_data(var, lon, lat, which=None, config=None, start=None, end='all'):
   '''Extract climate data from SNAP source files.
-  This function is specific to the SNAP tif files so don't try to generalize it.'''
+  This function is specific to the SNAP tif files so don't try to 
+  generalize it.
+  
+  The timecoord is filled out by looking at the first source file, 
+  finding the date, and then using netCDF4.date2num to get offset value
+  in "days since..." resolution for each subsequent file (date parsed
+  from file name)
+
+  Returns
+  -------
+  data: list or numpy.array
+    the data array for the point, read from source 
+    files using gdallocationinfo
+  timecoord: list or numpy.array
+    the offsets from the starting point - from 
+    starting point - for each of the src files 
+  starting_point: datetime.date object
+    the  for the first file in the source files
+  '''
   if start is None:
     raise RuntimeError("Must set start date: 'YYYY-MM-DD'")
 
@@ -453,20 +536,6 @@ def get_SNAP_climate_data(var, lon, lat, which=None, config=None, start=None, en
 
   assert len(data) == len(src_files), "data array does not match number of source files!"
 
-
-  # Build out the time coordinate variable info...
-  def time_offset(dt_obj, start_point):
-    '''Takes a datetime object and a starting point (also datetime object)
-    and returns the netcdf time offset, i.e. "days since YYYY-MM-DD".
-    '''
-    dt_obj = dt.datetime(dt_obj.year, dt_obj.month, dt_obj.day)
-    tm_offset = netCDF4.date2num(
-        dt_obj, 
-        units="days since {}".format(start_point), 
-        calendar='365_day'
-    )
-    return tm_offset
-
   start_point = date_key(src_files[0]).strftime('%Y-%m-%d')
   timecoord = [time_offset(date_key(i), start_point) for i in src_files]
 
@@ -497,6 +566,9 @@ def make_climate(lon, lat, which=None, config=None, start=None, end=None):
     fill_file_A(base_outdir, 'projected-climate.nc', var='precip', data=precip_data)
     fill_file_A(base_outdir, 'projected-climate.nc', var='time', data=time_coord, startpt=startpt)
 
+def make_fire(lon, lat, which=None, config=None, start=None, end=None):
+  if which == 'historic':
+    pass
 
 def fromisoformat(isostring):
   '''
@@ -549,6 +621,7 @@ if __name__ == '__main__':
 
   parser.add_argument('--outdir', default='input-staging-area', 
     help='path to directory where new folder of files should be written')
+  
   parser.add_argument('--tag', default='cru-ts40_ar5_rcp85_')
 
   args = parser.parse_args()
@@ -573,17 +646,23 @@ if __name__ == '__main__':
   config.merge(cmdline_config)
   #print("\n".join(config.write()))
 
+  # Location as requested from command line
   lon = args.lon
   lat = args.lat
 
+  # Dates as requested from command line
+  start, end = args.date_range
+
+  # Setup name of files
   base_outdir = os.path.join( args.outdir, 'SITE_{}_{}'.format(args.tag, config['p clim orig inst']) )
   print("Will be (over)writing files to:    ", base_outdir)
   if not os.path.exists(base_outdir):
     os.makedirs(base_outdir)
 
+  # Start making and filling files
   create_empty_file(base_outdir, 'drainage.nc')
   drainage_class = gli_wrapper(os.path.join(args.src_ancillary, config['drainage src']), lon, lat)
-  # Need to threshold drainage data before writing...
+  # NOTE!: Need to threshold drainage data before writing...
   fill_file_A(base_outdir, 'drainage.nc', var='drainage_class', data=drainage_class)
 
   create_empty_file(base_outdir, 'topo.nc')
@@ -593,7 +672,6 @@ if __name__ == '__main__':
   fill_file_A(base_outdir, 'topo.nc', var="slope", data=slope)
   fill_file_A(base_outdir, 'topo.nc', var="aspect", data=aspect)
   fill_file_A(base_outdir, 'topo.nc', var="elevation", data=elevation)
-
 
   create_empty_file(base_outdir, 'vegetation.nc')
   veg_class = gli_wrapper(os.path.join(args.src_ancillary, config['veg src']), lon, lat)
@@ -607,76 +685,105 @@ if __name__ == '__main__':
   fill_file_A(base_outdir, 'soil_texture.nc', var='pct_silt', data=pct_silt)
   fill_file_A(base_outdir, 'soil_texture.nc', var='pct_clay', data=pct_clay)
 
+  # Fire - stubbed out for now w/ hard coded values as we don't have a source dataset setup yet...
+  create_empty_file(base_outdir, 'fri-fire.nc')
+  vnames = ['fri', 'fri_severity', 'fri_jday_of_burn', 'fri_area_of_burn']
+  for v in vnames:
+    fill_file_A(base_outdir, 'fri-fire.nc', var=v, data=0)
 
-  # dates as requested from command line
-  start, end = args.date_range
+
+  # TIME dependant files
+
+
+  # C02 file is yearly resolution.
+  #make_co2_file('co2.nc', 5, 8)
+  #create_empty_file(base_outdir, 'co2.nc')
+  #create_empty_file(base_outdir, 'projected-co2.nc')
+
+  # Climate and Fire share assumptions about time axis.
+  # Both are monthly resolution.
+  # For now it is assumed that the fire files time axis matches 
+  # exactly the climate files time axis. The climate files time 
+  # axis is set based on the values in the config objects and the
+  # availability of the files. If we setup fire inputs in the future
+  # we could add entries to the config object. For now we will set
+  # the fire time axes based on the climate files.
 
   # range of dates available in input files (as set in config)
   hrange = (fromisoformat('{}-01-01'.format(config['h clim first yr'])), fromisoformat('{}-12-01'.format(config['h clim last yr'])))
   prange = (fromisoformat('{}-01-01'.format(config['p clim first yr'])), fromisoformat('{}-12-01'.format(config['p clim last yr'])))
 
-  # Basic check
+  # Basic check - user dates within range of historic and projected
   if not (start >= hrange[0] and end <= prange[1]):
     raise RuntimeError("Invalid date range!")
 
+  # User dates all within projected files 
   if start >= prange[0]:
     print("No need to make historic files...")
+
+    # CLIMATE
     make_climate(lon, lat, which='projected', config=config, start=start, end=end)
 
+    # FIRE
+    create_empty_file(base_outdir, 'projected-explicit-fire.nc')
+    vnames = 'exp_burn_mask,exp_area_of_burn,exp_fire_severity,exp_jday_of_burn'.split(',')
+    tc_data = basic_timecoord(start, end)
+    fill_file_A(base_outdir, 'projected-explicit-fire.nc', var='time', data=tc_data, startpt=start)
+    for v in vnames:
+      fill_file_A(base_outdir, 'projected-explicit-fire.nc', var=v, data=np.zeros(len(tc_data)))
+
+  # User dates all within historic files
   if end <= hrange[1]:
     print("No need to make projected files...")
+
+    # CLIMATE
     make_climate(lon, lat, which='historic', config=config, start=start, end=end)
 
+    # FIRE
+    create_empty_file(base_outdir, 'historic-explicit-fire.nc')
+    tc_data = basic_timecoord(start, end)
+    fill_file_A(base_outdir, 'historic-explicit-fire.nc', var='time', data=tc_data, startpt=start)
+    vnames = 'exp_burn_mask,exp_area_of_burn,exp_fire_severity,exp_jday_of_burn'.split(',')
+    for v in vnames:
+      fill_file_A(base_outdir, 'historic-explicit-fire.nc', var=v, data=np.zeros(len(tc_data)))
+
+
+  # User dates in overlap between historic and projected.
   if start <= hrange[1] and end >= prange[0]:
     print("Overlapping...")
     # Make historic from start to hrange[1]
+
+    # CLIMATE - historic
     make_climate(lon, lat, which='historic', config=config, start=start, end=hrange[1])
+
+    # FIRE - historic
+    create_empty_file(base_outdir, 'historic-explicit-fire.nc')
+    tc_data = basic_timecoord(start, hrange[1])
+    fill_file_A(base_outdir, 'historic-explicit-fire.nc', var='time', data=tc_data, startpt=start)
+    vnames = 'exp_burn_mask,exp_area_of_burn,exp_fire_severity,exp_jday_of_burn'.split(',')
+    for v in vnames:
+      fill_file_A(base_outdir, 'historic-explicit-fire.nc', var=v, data=np.zeros(len(tc_data)))
+
 
     # make projected files from hrange[1] + 1 month to end
     begin_proj = hrange[1] + dt.timedelta(days=calendar.monthrange(hrange[1].year, hrange[1].month)[1])
     make_climate(lon, lat, which='projected', config=config, start=begin_proj, end=end)
 
+    # FIRE - projected
+    create_empty_file(base_outdir, 'projected-explicit-fire.nc')
+    vnames = 'exp_burn_mask,exp_area_of_burn,exp_fire_severity,exp_jday_of_burn'.split(',')
+    tc_data = basic_timecoord(begin_proj, end)
+    fill_file_A(base_outdir, 'projected-explicit-fire.nc', var='time', data=tc_data, startpt=begin_proj)
+    for v in vnames:
+      fill_file_A(base_outdir, 'projected-explicit-fire.nc', var=v, data=np.zeros(len(tc_data)))
 
 
 
 
 
 
+# ./scripts/create_site_input.py \
+# --src-climate ../snap-data-2019 \
+# --src-ancillary ../snap-data-2019/ancillary \
+# --date-range 2016-01-01 2017-12-01
 
-    # import datetime as dt
-
-    # startdt = dt.datetime.strptime(start, "%Y-%m-%d")
-    # if end == 'all':
-    #   print("Not implemented yet...")
-    #   exit(-1)
-    # else:
-    #   enddt = dt.datetime.strptime(end, '%Y-%m-%d')
-
-    #for year in 
-
-
-    # Does not work, loses time over time...
-    # for month in range(0,25):
-    #   mid_month = (startdt + dt.timedelta(days=15))
-    #   mid_month = mid_month + dt.timedelta(days=(30*month))
-    #   print(mid_month.strftime("%Y-%m"))
-
-
-
-
-
-
-    #pass #src_path = 
-
-
-  # s = "gdallocationinfo -wgs84 -valonly {} {} {}".format(os.path.join(args.src_ancillary, config['veg src']), lon, lat)
-  # result = subprocess.run(s.split(' '), stdout=subprocess.PIPE, stderr=subprocess.STDOUT )
-  # veg_class = result.stdout.decode('utf-8')
-
-
-
-  #result.check_returncode()
-  
-  
-
-#./create_site_input.py --wgs84 --xy -164.823923 65.161991 --tag koug_hill --which all --overwrite 
