@@ -271,7 +271,7 @@ VARSPEC = {
   'vegetation.nc': {
     'veg_class': {'dims':'Y,X', 'dtype': 'i4'}
   },
-  'soil_texture.nc': {
+  'soil-texture.nc': {
     'pct_sand': {'dims':'Y,X', 'dtype': 'f4'},
     'pct_silt': {'dims':'Y,X', 'dtype': 'f4'},
     'pct_clay': {'dims':'Y,X', 'dtype': 'f4'},
@@ -642,6 +642,14 @@ if __name__ == '__main__':
   if not os.path.exists(base_outdir):
     os.makedirs(base_outdir)
 
+  with netCDF4.Dataset(os.path.join(base_outdir, 'run-mask.nc'), 'w', format='NETCDF4') as ds:
+  
+    ds.createDimension('Y', 1)
+    ds.createDimension('X', 1)
+    ds.createVariable('run', np.int, ('Y', 'X',))
+    ds.variables['run'][:] = 1
+    print(ds)
+
   # Start making and filling files
   create_empty_file(base_outdir, 'drainage.nc')
   drainage_class = gli_wrapper(os.path.join(args.src_ancillary, config['drainage src']), lon, lat)
@@ -660,13 +668,13 @@ if __name__ == '__main__':
   veg_class = gli_wrapper(os.path.join(args.src_ancillary, config['veg src']), lon, lat)
   fill_file_A(base_outdir, 'vegetation.nc', var='veg_class', data=veg_class)
 
-  create_empty_file(base_outdir, 'soil_texture.nc')
+  create_empty_file(base_outdir, 'soil-texture.nc')
   pct_sand = gli_wrapper(os.path.join(args.src_ancillary, config['soil sand src']), lon, lat)
   pct_silt = gli_wrapper(os.path.join(args.src_ancillary, config['soil silt src']), lon, lat)
   pct_clay = gli_wrapper(os.path.join(args.src_ancillary, config['soil clay src']), lon, lat)
-  fill_file_A(base_outdir, 'soil_texture.nc', var='pct_sand', data=pct_sand)
-  fill_file_A(base_outdir, 'soil_texture.nc', var='pct_silt', data=pct_silt)
-  fill_file_A(base_outdir, 'soil_texture.nc', var='pct_clay', data=pct_clay)
+  fill_file_A(base_outdir, 'soil-texture.nc', var='pct_sand', data=pct_sand)
+  fill_file_A(base_outdir, 'soil-texture.nc', var='pct_silt', data=pct_silt)
+  fill_file_A(base_outdir, 'soil-texture.nc', var='pct_clay', data=pct_clay)
 
   # Fire - stubbed out for now w/ hard coded values as we don't have a source dataset setup yet...
   create_empty_file(base_outdir, 'fri-fire.nc')
